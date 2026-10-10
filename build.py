@@ -7,9 +7,18 @@ URL = "https://api.fxtwitter.com/2/profile/Kevin_Logan/statuses?count=100"
 ME = "kevin_logan"
 
 def fetch():
-    req = urllib.request.Request(URL, headers={"User-Agent": "kevin-linkpage/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)["results"]
+    import time
+    last = None
+    for i in range(6):
+        for ua in ("kevin-linkpage/1.0", "Mozilla/5.0 (compatible; linkpage)"):
+            try:
+                req = urllib.request.Request(URL, headers={"User-Agent": ua})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return json.load(r)["results"]
+            except Exception as e:
+                last = e
+        time.sleep(10 * (i + 1))
+    raise last
 
 def mine(p):
     return (p.get("author") or {}).get("screen_name", "").lower() == ME and not p.get("reposted_by")
