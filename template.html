@@ -87,5 +87,6 @@
   <p class="note">Want to know what my bots are up to? Ask me on X.</p>
   <footer>&copy; Kevin Logan</footer>
 </main>
+<script>document.querySelectorAll("video").forEach(function(v){v.muted=true;v.setAttribute("muted","");v.setAttribute("playsinline","");var p=function(){var r=v.play();if(r&&r.catch)r.catch(function(){})};p();v.addEventListener("loadeddata",p);v.addEventListener("pause",function(){if(!v.ended&&!document.hidden)p()});["touchstart","click","scroll"].forEach(function(e){window.addEventListener(e,p,{once:true,passive:true})});document.addEventListener("visibilitychange",p)});</script>
 </body>
 </html>

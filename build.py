@@ -60,7 +60,7 @@ def main():
     if mp:
         url = html.escape(mp["url"])
         if mm["type"] == "gif":
-            el = f'<video src="{html.escape(mm["url"])}" poster="{html.escape(mm.get("thumbnail_url",""))}" autoplay loop muted playsinline></video>'
+            el = f'<video src="{html.escape(mm["url"])}" poster="{html.escape(mm.get("thumbnail_url",""))}" autoplay loop muted playsinline preload="auto"></video>'
         else:
             el = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
         cap = html.escape((mp.get("text") or "").strip())
