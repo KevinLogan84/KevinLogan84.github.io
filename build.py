@@ -42,6 +42,16 @@ def ago(ts):
     if s < 86400: return f"{s // 3600}h ago"
     return f"{s // 86400}d ago"
 
+def counts():
+    try:
+        req = urllib.request.Request("https://api.fxtwitter.com/Kevin_Logan", headers={"User-Agent": "kevin-linkpage/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            u = json.load(r)["user"]
+        return [f"{int(u[k]):,}" for k in ("tweets", "followers", "following")]
+    except Exception as e:
+        print("counts failed:", e)
+        return ["4,100+", "870+", "1,300+"]
+
 def main():
     tpl = open("template.html", encoding="utf-8").read()
     try:
@@ -66,7 +76,8 @@ def main():
         cap = html.escape((mp.get("text") or "").strip())
         meme_html = (f'<div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div>'
                      f'<a class="box" href="{url}">{el}</a>' + (f'<div class="cap">{cap}</div>' if cap else "") + '</div>')
-    out = (tpl.replace("{{TEXT}}", html.escape(p["text"]))
+    posts_n, fol_n, fing_n = counts()
+    out = (tpl.replace("{{POSTS}}", posts_n).replace("{{FOLLOWERS}}", fol_n).replace("{{FOLLOWING}}", fing_n).replace("{{TEXT}}", html.escape(p["text"]))
               .replace("{{URL}}", html.escape(p["url"]))
               .replace("{{WHEN}}", ago(ts) if ts else "")
               .replace("{{META}}", html.escape(meta))
