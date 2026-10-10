@@ -42,6 +42,16 @@ def ago(ts):
     if s < 86400: return f"{s // 3600}h ago"
     return f"{s // 86400}d ago"
 
+def save(url, name):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "kevin-linkpage/1.0"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            open(name, "wb").write(r.read())
+        return name
+    except Exception as e:
+        print("save failed:", url, e)
+        return None
+
 def counts():
     try:
         req = urllib.request.Request("https://api.fxtwitter.com/Kevin_Logan", headers={"User-Agent": "kevin-linkpage/1.0"})
@@ -70,7 +80,8 @@ def main():
     if mp:
         url = html.escape(mp["url"])
         if mm["type"] == "gif":
-            el = f'<video src="{html.escape(mm["url"])}" poster="{html.escape(mm.get("thumbnail_url",""))}" autoplay loop muted playsinline preload="auto"></video>'
+            v = save(mm["url"], "meme.mp4"); th = save(mm.get("thumbnail_url", ""), "meme.jpg") if mm.get("thumbnail_url") else None
+            el = f'<video src="{v or html.escape(mm["url"])}" poster="{th or ""}" autoplay loop muted playsinline preload="auto"></video>'
         else:
             el = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
         cap = html.escape((mp.get("text") or "").strip())

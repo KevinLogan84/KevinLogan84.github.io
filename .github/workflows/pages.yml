@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 build.py
-      - run: mkdir site && cp index.html avatar.jpg site/
+      - run: mkdir site && cp index.html avatar.jpg site/ && (cp meme.mp4 meme.jpg site/ || true)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
