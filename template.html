@@ -40,6 +40,11 @@
   a.post:hover{border-color:var(--c);box-shadow:0 10px 36px rgba(255,95,162,.22)}
   a.post p{margin:0 0 10px;line-height:1.5;font-size:15px;white-space:pre-line}
   .meta{font-size:12px;color:var(--muted)}
+  .meme{margin:0 0 20px;text-align:left}
+  .meme .box{display:block;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#000;transition:border-color .15s,box-shadow .15s}
+  .meme .box:hover{border-color:var(--c);box-shadow:0 10px 36px rgba(255,95,162,.22)}
+  .meme img,.meme video{display:block;width:100%;height:auto}
+  .meme .cap{font-size:13px;color:var(--muted);padding:8px 4px 0}
   a.link{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:var(--text);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);border-radius:16px;padding:17px 20px;margin:13px 0;text-align:left;transition:transform .15s,border-color .15s,box-shadow .15s}
   a.link:hover{transform:translateY(-3px) scale(1.01);border-color:var(--a);box-shadow:0 10px 36px rgba(74,168,255,.28)}
   a.link.hero{background:linear-gradient(135deg,rgba(74,168,255,.28),rgba(138,92,255,.28));border-color:rgba(138,92,255,.6)}
@@ -68,9 +73,11 @@
   </div>
 
   <div class="latest">
-    <div class="lh"><span class="dot"></span> Latest from X <span class="when">{{WHEN}}</span></div>
+    <div class="lh"><span class="dot"></span> Latest post <span class="when">{{WHEN}}</span></div>
     <a class="post" href="{{URL}}"><p>{{TEXT}}</p><span class="meta">{{META}}</span></a>
   </div>
+
+  {{MEME}}
 
   <a class="link hero" href="https://x.com/Kevin_Logan"><span><span class="t">Follow me on X</span><span class="s">Grok Bot, gadgets, launches and the occasional sarcasm</span></span><span class="arrow">&rarr;</span></a>
   <a class="link" href="https://x.com/Kevin_Logan/status/2108718189064650834"><span><span class="t">My Grok Bot email story</span><span class="s">Claimed it after several failed attempts</span></span><span class="arrow">&rarr;</span></a>
