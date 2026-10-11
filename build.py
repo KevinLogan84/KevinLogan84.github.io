@@ -40,7 +40,9 @@ def latest_meme(posts, skip_id):
     for p in posts:
         if not mine(p) or p.get("id") == skip_id:
             continue
-        m = [x for x in media_items(p) if x.get("type") == "gif"]
+        m = [x for x in media_items(p) if x.get("type") in ("gif", "photo")]
+        if len([x for x in media_items(p) if x.get("type") == "photo"]) > 1:
+            continue
         if m and len((p.get("text") or "")) <= 140 and not is_reply(p):
             return p, m[0]
     return None, None
@@ -92,7 +94,8 @@ def main():
             v = save(mm["url"], "meme.mp4"); th = save(mm.get("thumbnail_url", ""), "meme.jpg") if mm.get("thumbnail_url") else None
             el = f'<video src="{v or html.escape(mm["url"])}" poster="{th or ""}" autoplay loop muted playsinline preload="auto"></video>'
         else:
-            el = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
+            img = save(mm["url"], "meme.jpg")
+            el = f'<img src="{img or html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
         cap = html.escape((mp.get("text") or "").strip())
         meme_html = (f'<div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div>'
                      f'<a class="box" href="{url}">{el}</a>' + (f'<div class="cap">{cap}</div>' if cap else "") + '</div>')
