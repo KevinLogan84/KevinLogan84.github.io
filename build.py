@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Build index.html from template.html: Kevin's latest original post + latest meme (GIF/photo post of his own). No API key needed."""
-import html, json, sys, urllib.request
+"""Build index.html from template.html: Kevin's latest original post + latest meme.
+
+No API key needed. A failed X fetch must not fail the deploy: rebuild from
+snapshot/post.json (the last good post) or keep the committed index.html.
+"""
+import html, json, os, sys, urllib.request
 from datetime import datetime, timezone
 
 URL = "https://api.fxtwitter.com/2/profile/Kevin_Logan/statuses?count=100"
 ME = "kevin_logan"
+SNAPSHOT = "snapshot/post.json"
+COUNT_FALLBACK = ("4,100+", "870+", "1,300+")
 
 def fetch():
     import time
@@ -71,41 +77,148 @@ def counts():
         return [f"{int(u[k]):,}" for k in ("tweets", "followers", "following")]
     except Exception as e:
         print("counts failed:", e)
-        return ["4,100+", "870+", "1,300+"]
+        return list(COUNT_FALLBACK)
+
+def load_snapshot():
+    try:
+        with open(SNAPSHOT, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("no snapshot:", e)
+        return None
+    if (data.get("text") or "").strip() and data.get("url"):
+        return data
+    print("snapshot missing text or url")
+    return None
+
+def save_snapshot(data):
+    os.makedirs(os.path.dirname(SNAPSHOT), exist_ok=True)
+    tmp = SNAPSHOT + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, SNAPSHOT)
+
+def write_index(text):
+    tmp = "index.html.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, "index.html")
+
+def meme_html(meme):
+    if not meme:
+        return ""
+    url = html.escape(meme.get("page_url") or "https://x.com/Kevin_Logan")
+    cap = (meme.get("caption") or "").strip()
+    cap_html = f'<div class="cap">{html.escape(cap)}</div>' if cap else ""
+    if meme.get("type") == "gif" and meme.get("video") and os.path.exists(meme["video"]):
+        poster = meme.get("poster") or ""
+        poster_attr = f' poster="{html.escape(poster)}"' if poster and os.path.exists(poster) else ""
+        el = f'<video src="{html.escape(meme["video"])}"{poster_attr} loop muted playsinline preload="metadata"></video>'
+    elif meme.get("type") == "photo" and meme.get("image") and os.path.exists(meme["image"]):
+        el = f'<img src="{html.escape(meme["image"])}" alt="Latest meme" loading="lazy">'
+    elif meme.get("remote_html"):
+        el = meme["remote_html"]
+    else:
+        return ""
+    return (f'<div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div>'
+            f'<a class="box" href="{url}">{el}</a>{cap_html}</div>')
+
+def render(tpl, data):
+    ts = data.get("created_timestamp") or 0
+    when = ago(ts) if ts else ""
+    posts, followers, following = (data.get("posts"), data.get("followers"), data.get("following"))
+    out = (tpl.replace("{{POSTS}}", posts or COUNT_FALLBACK[0])
+              .replace("{{FOLLOWERS}}", followers or COUNT_FALLBACK[1])
+              .replace("{{FOLLOWING}}", following or COUNT_FALLBACK[2])
+              .replace("{{TEXT}}", html.escape(data["text"]))
+              .replace("{{URL}}", html.escape(data["url"]))
+              .replace("{{WHEN}}", when)
+              .replace("{{META}}", html.escape(data.get("meta") or "View on X"))
+              .replace("{{MEME}}", meme_html(data.get("meme"))))
+    write_index(out)
+
+def publish_fallback(tpl, reason):
+    print(reason)
+    snap = load_snapshot()
+    if snap:
+        render(tpl, snap)
+        print("rebuilt index.html from last good post:", snap.get("url"))
+        return 0
+    if os.path.isfile("index.html") and os.path.getsize("index.html") > 0:
+        print("keeping existing index.html")
+        return 0
+    render(tpl, {
+        "text": "Latest post will show up here once X is reachable again.",
+        "url": "https://x.com/Kevin_Logan",
+        "created_timestamp": 0,
+        "meta": "View on X",
+        "posts": COUNT_FALLBACK[0],
+        "followers": COUNT_FALLBACK[1],
+        "following": COUNT_FALLBACK[2],
+        "meme": None,
+    })
+    print("wrote static fallback index.html")
+    return 0
 
 def main():
     tpl = open("template.html", encoding="utf-8").read()
     try:
         posts = fetch()
     except Exception as e:
-        print("fetch failed, keeping previous index.html:", e)
-        return 0
+        return publish_fallback(tpl, f"fetch failed, keeping last good post: {e}")
     p = latest_post(posts)
     if not p:
-        print("no suitable post, keeping previous index.html")
-        return 0
+        return publish_fallback(tpl, "no suitable post, keeping last good post")
     ts = p.get("created_timestamp") or 0
     meta = f"{p.get('likes', 0)} likes · {p.get('replies', 0)} replies · View on X"
-    meme_html = ""
+    meme = None
     mp, mm = latest_meme(posts, p.get("id"))
-    if mp:
-        url = html.escape(mp["url"])
+    if mp and mm:
+        page_url = mp["url"]
+        cap = (mp.get("text") or "").strip()
         if mm["type"] == "gif":
-            v = save(mm["url"], "meme.mp4"); th = save(mm.get("thumbnail_url", ""), "meme.jpg") if mm.get("thumbnail_url") else None
-            el = f'<video src="{v or html.escape(mm["url"])}" poster="{th or ""}" autoplay loop muted playsinline preload="auto"></video>'
+            video = save(mm["url"], "meme.mp4")
+            poster = save(mm.get("thumbnail_url", ""), "meme.jpg") if mm.get("thumbnail_url") else None
+            meme = {
+                "page_url": page_url,
+                "type": "gif",
+                "caption": cap,
+                "video": video or "",
+                "poster": poster or "",
+            }
+            if not video:
+                meme["remote_html"] = f'<video src="{html.escape(mm["url"])}" loop muted playsinline preload="metadata"></video>'
         else:
-            img = save(mm["url"], "meme.jpg")
-            el = f'<img src="{img or html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
-        cap = html.escape((mp.get("text") or "").strip())
-        meme_html = (f'<div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div>'
-                     f'<a class="box" href="{url}">{el}</a>' + (f'<div class="cap">{cap}</div>' if cap else "") + '</div>')
+            image = save(mm["url"], "meme.jpg")
+            meme = {
+                "page_url": page_url,
+                "type": "photo",
+                "caption": cap,
+                "image": image or "",
+            }
+            if not image:
+                meme["remote_html"] = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
     posts_n, fol_n, fing_n = counts()
-    out = (tpl.replace("{{POSTS}}", posts_n).replace("{{FOLLOWERS}}", fol_n).replace("{{FOLLOWING}}", fing_n).replace("{{TEXT}}", html.escape(p["text"]))
-              .replace("{{URL}}", html.escape(p["url"]))
-              .replace("{{WHEN}}", ago(ts) if ts else "")
-              .replace("{{META}}", html.escape(meta))
-              .replace("{{MEME}}", meme_html))
-    open("index.html", "w", encoding="utf-8").write(out)
+    data = {
+        "id": p.get("id"),
+        "text": p["text"],
+        "url": p["url"],
+        "created_timestamp": ts,
+        "meta": meta,
+        "posts": posts_n,
+        "followers": fol_n,
+        "following": fing_n,
+        "meme": meme,
+    }
+    # remote_html is only for this deploy; the persisted snapshot points at local files.
+    persisted = dict(data)
+    if meme and meme.get("remote_html") and not (meme.get("video") or meme.get("image")):
+        persisted["meme"] = None
+    elif meme:
+        persisted["meme"] = {k: v for k, v in meme.items() if k != "remote_html"}
+    save_snapshot(persisted)
+    render(tpl, data)
     print("post:", p["url"], "| meme:", mp["url"] if mp else None)
     return 0
 
