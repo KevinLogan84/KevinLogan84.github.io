@@ -1,3 +1,3 @@
-index.html
-meme.mp4
-meme.jpg
+*.tmp
+__pycache__/
+.linkpage-cache/

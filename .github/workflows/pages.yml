@@ -5,26 +5,90 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Permissions are set per job. A workflow-level read cap would block the keepalive write.
 concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - run: python3 build.py
-      - run: mkdir site && cp index.html avatar.jpg site/ && (cp meme.mp4 meme.jpg site/ || true)
+      - name: Restore last good page
+        uses: actions/cache/restore@v4
+        with:
+          path: .linkpage-cache
+          key: linkpage-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            linkpage-
+      - name: Unpack last good page
+        run: |
+          if [ -f .linkpage-cache/index.html ]; then
+            cp -f .linkpage-cache/index.html index.html
+            mkdir -p snapshot
+            cp -f .linkpage-cache/snapshot/post.json snapshot/post.json
+            cp -f .linkpage-cache/meme.jpg . 2>/dev/null || true
+            cp -f .linkpage-cache/meme.mp4 . 2>/dev/null || true
+          fi
+      - name: Build page
+        # build.py exits 0 when the X fetch fails and keeps the last good post.
+        run: python3 build.py
+      - name: Assemble site
+        run: |
+          test -s index.html
+          mkdir -p site
+          cp index.html avatar.jpg site/
+          cp meme.jpg site/ 2>/dev/null || true
+          cp meme.mp4 site/ 2>/dev/null || true
+      - name: Pack last good page
+        run: |
+          rm -rf .linkpage-cache
+          mkdir -p .linkpage-cache/snapshot
+          cp -f index.html .linkpage-cache/index.html
+          cp -f snapshot/post.json .linkpage-cache/snapshot/post.json
+          cp -f meme.jpg .linkpage-cache/ 2>/dev/null || true
+          cp -f meme.mp4 .linkpage-cache/ 2>/dev/null || true
+      - name: Save last good page
+        if: success()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .linkpage-cache
+          key: linkpage-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # GitHub disables scheduled workflows after 60 days without repository activity.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the schedule alive
+        run: |
+          set -euo pipefail
+          now=$(date +%s)
+          last=$(git log -1 --format=%ct)
+          age=$(( now - last ))
+          limit=$((30 * 24 * 3600))
+          if [ "$age" -lt "$limit" ]; then
+            echo "Last commit is ${age}s old; keepalive not needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Keep scheduled link-page rebuild alive"
+          git push || echo "keepalive push failed; deploy does not depend on it"

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kevin Logan</title>
+<meta name="description" content="Tech enthusiast, rocketry fan, outdoor explorer, family man. A bit sarcastic. Running a fleet of Grok Bots.">
+<style>
+  :root{--bg:#06070b;--text:#f1f5fb;--muted:#9aa7b8;--a:#4aa8ff;--b:#8a5cff;--c:#ff5fa2}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;background:var(--bg);overflow-x:hidden;display:flex;justify-content:center;padding:54px 18px 40px}
+  .glow{position:fixed;inset:0;z-index:-1;overflow:hidden}
+  .glow i{position:absolute;width:520px;height:520px;border-radius:50%;filter:blur(110px);opacity:.45;animation:float 14s ease-in-out infinite}
+  .glow i:nth-child(1){background:var(--a);top:-160px;left:-120px}
+  .glow i:nth-child(2){background:var(--b);top:30%;right:-200px;animation-delay:-5s}
+  .glow i:nth-child(3){background:var(--c);bottom:-220px;left:20%;opacity:.3;animation-delay:-9s}
+  @keyframes float{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-30px)}}
+  main{width:100%;max-width:500px;text-align:center}
+  .ring{width:136px;height:136px;margin:0 auto 20px;border-radius:50%;padding:4px;background:conic-gradient(from 0deg,var(--a),var(--b),var(--c),var(--a));animation:spin 8s linear infinite;box-shadow:0 0 40px rgba(138,92,255,.45)}
+  .ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;border:4px solid var(--bg);animation:unspin 8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes unspin{to{transform:rotate(-360deg)}}
+  h1{margin:0;font-size:34px;letter-spacing:-.5px;background:linear-gradient(90deg,#fff,#b9d9ff,#d3c2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .handle{color:var(--muted);margin:6px 0 16px;font-size:15px}
+  .bio{line-height:1.55;margin:0 auto 18px;max-width:390px;font-size:16px;color:#dfe7f2}
+  .stats{display:flex;gap:10px;justify-content:center;margin-bottom:18px;flex-wrap:wrap}
+  .stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(10px);border-radius:14px;padding:10px 16px;min-width:96px}
+  .stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--muted)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:26px}
+  .chip{font-size:13px;padding:7px 12px;border-radius:999px;background:rgba(74,168,255,.12);border:1px solid rgba(74,168,255,.35);color:#cfe6ff}
+  .chip:nth-child(2n){background:rgba(138,92,255,.12);border-color:rgba(138,92,255,.4);color:#e0d6ff}
+  .chip:nth-child(3n){background:rgba(255,95,162,.12);border-color:rgba(255,95,162,.4);color:#ffd3e6}
+  .latest{margin:6px 0 20px;text-align:left}
+  .lh{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 4px 8px;display:flex;align-items:center;gap:8px}
+  .lh .when{margin-left:auto;text-transform:none;letter-spacing:0}
+  .dot{width:8px;height:8px;border-radius:50%;background:#3ddc84;box-shadow:0 0 10px #3ddc84;animation:pulse 2s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  a.post{display:block;text-decoration:none;color:var(--text);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(14px);border-radius:16px;padding:16px 18px;transition:border-color .15s,box-shadow .15s}
+  a.post:hover{border-color:var(--c);box-shadow:0 10px 36px rgba(255,95,162,.22)}
+  a.post p{margin:0 0 10px;line-height:1.5;font-size:15px;white-space:pre-line}
+  .meta{font-size:12px;color:var(--muted)}
+  .meme{margin:0 0 20px;text-align:left}
+  .meme .box{display:block;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background:#000;transition:border-color .15s,box-shadow .15s}
+  .meme .box:hover{border-color:var(--c);box-shadow:0 10px 36px rgba(255,95,162,.22)}
+  .meme img,.meme video{display:block;width:100%;height:auto}
+  .meme .cap{font-size:13px;color:var(--muted);padding:8px 4px 0}
+  a.link{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;text-decoration:none;color:var(--text);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(14px);border-radius:16px;padding:17px 20px;margin:13px 0;text-align:left;transition:transform .15s,border-color .15s,box-shadow .15s}
+  a.link:hover{transform:translateY(-3px) scale(1.01);border-color:var(--a);box-shadow:0 10px 36px rgba(74,168,255,.28)}
+  a.link.hero{background:linear-gradient(135deg,rgba(74,168,255,.28),rgba(138,92,255,.28));border-color:rgba(138,92,255,.6)}
+  .t{font-weight:650;font-size:16px}.s{display:block;color:var(--muted);font-size:13px;margin-top:3px;font-weight:400}
+  .arrow{font-size:22px;color:var(--a);transition:transform .15s}a.link:hover .arrow{transform:translateX(4px)}
+  .note{margin-top:30px;font-size:13px;color:var(--muted);line-height:1.5;max-width:400px;margin-left:auto;margin-right:auto}
+  footer{margin-top:26px;color:#5e6b7c;font-size:12px}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation:none !important;transition:none !important}
+    a.link:hover,a.link:hover .arrow{transform:none}
+  }
+</style>
+</head>
+<body>
+<div class="glow"><i></i><i></i><i></i></div>
+<main>
+  <div class="ring"><img src="avatar.jpg" alt="Kevin Logan"></div>
+  <h1>Kevin Logan</h1>
+  <div class="handle">@Kevin_Logan &middot; Tecumseh, OK</div>
+  <p class="bio">Tech enthusiast. Rocketry fan. Outdoor explorer. Family man. A bit sarcastic.<br>Running a fleet of Grok Bots to take the real work off my plate.</p>
+
+  <div class="stats">
+    <div class="stat"><b>4,815</b><span>posts</span></div>
+    <div class="stat"><b>1,175</b><span>followers</span></div>
+    <div class="stat"><b>1,575</b><span>following</span></div>
+  </div>
+
+  <div class="chips">
+    <span class="chip">Grok Bot</span><span class="chip">Rocketry &amp; launches</span><span class="chip">Apple gear</span><span class="chip">Starlink &amp; connectivity</span><span class="chip">Outdoors</span>
+  </div>
+
+  <div class="latest">
+    <div class="lh"><span class="dot"></span> Latest post <span class="when">7m ago</span></div>
+    <a class="post" href="https://x.com/Kevin_Logan/status/2110867551668363713"><p>As the saying goes, &quot;It&#x27;s a good model&quot;</p><span class="meta">0 likes · 0 replies · View on X</span></a>
+  </div>
+
+  <div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div><a class="box" href="https://x.com/Kevin_Logan/status/2110760997179068904"><img src="meme.jpg" alt="Latest meme" loading="lazy"></a><div class="cap">Another Grok Bot Pre Patch for 0.72 some email changes coming.</div></div>
+
+  <a class="link hero" href="https://x.com/Kevin_Logan"><span><span class="t">Follow me on X</span><span class="s">Grok Bot, gadgets, launches and the occasional sarcasm</span></span><span class="arrow">&rarr;</span></a>
+  <a class="link" href="https://www.facebook.com/kevin.logan.75"><span><span class="t">Facebook</span><span class="s">Family and friends</span></span><span class="arrow">&rarr;</span></a>
+  <a class="link" href="https://github.com/KevinLogan84"><span><span class="t">GitHub</span><span class="s">My public projects, including Grok &amp; Cursor Usage</span></span><span class="arrow">&rarr;</span></a>
+  <a class="link" href="https://github.com/KevinLogan84/XFollowOverlay#readme"><span><span class="t">X Follow Overlay</span><span class="s">Free Safari &amp; Chrome extension: see who follows you back right on x.com</span></span><span class="arrow">&rarr;</span></a>
+  <a class="link" href="mailto:kevinlogan@mail.grokbot.com"><span><span class="t">Email me</span><span class="s">kevinlogan@mail.grokbot.com</span></span><span class="arrow">&rarr;</span></a>
+
+  <p class="note">Want to know what my bots are up to? Ask me on X.</p>
+  <footer>&copy; Kevin Logan</footer>
+</main>
+<script>
+(function(){
+  var mq=window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduced=function(){return mq.matches};
+  document.querySelectorAll("video").forEach(function(v){
+    v.muted=true;v.setAttribute("muted","");v.setAttribute("playsinline","");
+    var play=function(){
+      if(reduced()){v.removeAttribute("autoplay");v.setAttribute("controls","");v.pause();return}
+      v.removeAttribute("controls");v.setAttribute("autoplay","");v.preload="auto";
+      var r=v.play();if(r&&r.catch)r.catch(function(){})
+    };
+    play();
+    v.addEventListener("loadeddata",play);
+    v.addEventListener("pause",function(){if(!reduced()&&!v.ended&&!document.hidden)play()});
+    ["touchstart","click","scroll"].forEach(function(e){window.addEventListener(e,play,{once:true,passive:true})});
+    document.addEventListener("visibilitychange",play);
+    if(mq.addEventListener)mq.addEventListener("change",play);
+  });
+})();
+</script>
+</body>
+</html>

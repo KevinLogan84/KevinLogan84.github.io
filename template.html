@@ -52,6 +52,11 @@
   .arrow{font-size:22px;color:var(--a);transition:transform .15s}a.link:hover .arrow{transform:translateX(4px)}
   .note{margin-top:30px;font-size:13px;color:var(--muted);line-height:1.5;max-width:400px;margin-left:auto;margin-right:auto}
   footer{margin-top:26px;color:#5e6b7c;font-size:12px}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation:none !important;transition:none !important}
+    a.link:hover,a.link:hover .arrow{transform:none}
+  }
 </style>
 </head>
 <body>
@@ -88,6 +93,25 @@
   <p class="note">Want to know what my bots are up to? Ask me on X.</p>
   <footer>&copy; Kevin Logan</footer>
 </main>
-<script>document.querySelectorAll("video").forEach(function(v){v.muted=true;v.setAttribute("muted","");v.setAttribute("playsinline","");var p=function(){var r=v.play();if(r&&r.catch)r.catch(function(){})};p();v.addEventListener("loadeddata",p);v.addEventListener("pause",function(){if(!v.ended&&!document.hidden)p()});["touchstart","click","scroll"].forEach(function(e){window.addEventListener(e,p,{once:true,passive:true})});document.addEventListener("visibilitychange",p)});</script>
+<script>
+(function(){
+  var mq=window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduced=function(){return mq.matches};
+  document.querySelectorAll("video").forEach(function(v){
+    v.muted=true;v.setAttribute("muted","");v.setAttribute("playsinline","");
+    var play=function(){
+      if(reduced()){v.removeAttribute("autoplay");v.setAttribute("controls","");v.pause();return}
+      v.removeAttribute("controls");v.setAttribute("autoplay","");v.preload="auto";
+      var r=v.play();if(r&&r.catch)r.catch(function(){})
+    };
+    play();
+    v.addEventListener("loadeddata",play);
+    v.addEventListener("pause",function(){if(!reduced()&&!v.ended&&!document.hidden)play()});
+    ["touchstart","click","scroll"].forEach(function(e){window.addEventListener(e,play,{once:true,passive:true})});
+    document.addEventListener("visibilitychange",play);
+    if(mq.addEventListener)mq.addEventListener("change",play);
+  });
+})();
+</script>
 </body>
 </html>
