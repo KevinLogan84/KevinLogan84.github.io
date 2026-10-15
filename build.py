@@ -121,7 +121,7 @@ def meme_html(meme):
         el = meme["remote_html"]
     else:
         return ""
-    return (f'<div class="meme"><div class="lh"><span class="dot"></span> Latest meme</div>'
+    return (f'<div class="meme"><div class="lh"><span class="dot"></span> LATEST PHOTO / MEME</div>'
             f'<a class="box" href="{url}">{el}</a>{cap_html}</div>')
 
 def render(tpl, data):
