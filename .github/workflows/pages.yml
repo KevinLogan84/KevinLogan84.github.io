@@ -5,20 +5,16 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
 # Permissions are set per job. A workflow-level read cap would block the keepalive write.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Restore last good page
@@ -40,6 +36,19 @@ jobs:
       - name: Build page
         # build.py exits 0 when the X fetch fails and keeps the last good post.
         run: python3 build.py
+      - name: Failed fetch still builds
+        run: |
+          python3 - <<'PY'
+          import build
+          def boom():
+              raise OSError("simulated fetch failure")
+          build.fetch = boom
+          code = build.main()
+          html = open("index.html", encoding="utf-8").read()
+          if code != 0 or not html.strip() or "{{" in html:
+              raise SystemExit(f"failed fetch did not leave a page (exit {code})")
+          print("failed fetch still built index.html")
+          PY
       - name: Assemble site
         run: |
           test -s index.html
@@ -48,6 +57,7 @@ jobs:
           cp meme.jpg site/ 2>/dev/null || true
           cp meme.mp4 site/ 2>/dev/null || true
       - name: Pack last good page
+        if: github.event_name != 'pull_request'
         run: |
           rm -rf .linkpage-cache
           mkdir -p .linkpage-cache/snapshot
@@ -56,12 +66,33 @@ jobs:
           cp -f meme.jpg .linkpage-cache/ 2>/dev/null || true
           cp -f meme.mp4 .linkpage-cache/ 2>/dev/null || true
       - name: Save last good page
-        if: success()
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: .linkpage-cache
           key: linkpage-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
