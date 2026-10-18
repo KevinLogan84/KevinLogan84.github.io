@@ -4,7 +4,7 @@
 No API key needed. A failed X fetch must not fail the deploy: rebuild from
 snapshot/post.json (the last good post) or keep the committed index.html.
 """
-import html, json, os, sys, urllib.request
+import html, json, os, re, sys, urllib.request
 from datetime import datetime, timezone
 
 URL = "https://api.fxtwitter.com/2/profile/Kevin_Logan/statuses?count=100"
@@ -124,6 +124,65 @@ def meme_html(meme):
     return (f'<div class="meme"><div class="lh"><span class="dot"></span> LATEST PHOTO / MEME</div>'
             f'<a class="box" href="{url}">{el}</a>{cap_html}</div>')
 
+LATEST_BOT = "latest-bot.json"
+
+def _meta(page, prop):
+    m = re.search(r'<meta (?:property|name)="%s" content="([^"]*)"' % re.escape(prop), page)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+def latest_bot():
+    """Kevin's newest marketplace bot. latest-bot.json holds the link (edit it when a new bot ships);
+    the name, blurb and preview image are refreshed from the live marketplace page when it is reachable."""
+    try:
+        with open(LATEST_BOT, encoding="utf-8") as f:
+            bot = json.load(f)
+    except Exception as e:
+        print("no latest bot:", e)
+        return None
+    if not bot.get("url"):
+        return None
+    try:
+        req = urllib.request.Request(bot["url"], headers={"User-Agent": "Mozilla/5.0 (compatible; linkpage)"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            page = r.read().decode("utf-8", "replace")
+        title = re.sub(r"\s+by\s+[^\n]+$", "", _meta(page, "og:title"))
+        desc = _meta(page, "og:description")
+        if desc:
+            first = re.split(r"(?<=[.!?])\s", desc, maxsplit=1)[0].rstrip(".,")
+            if not first.endswith((".", "!", "?")):
+                first += "."
+            bot["description"] = first
+        if title:
+            bot["name"] = title
+        img = _meta(page, "og:image")
+        if img and save(img, "bot.png.tmp"):
+            os.replace("bot.png.tmp", "bot.png")
+            bot["image"] = "bot.png"
+    except Exception as e:
+        print("bot page refresh failed, using latest-bot.json:", e)
+    return bot
+
+def bot_html(bot):
+    if not bot or not bot.get("name"):
+        return ""
+    url = html.escape(bot["url"])
+    img = bot.get("image") or ""
+    img_html = (f'<img src="{html.escape(img)}" alt="{html.escape(bot["name"])} preview" loading="lazy" width="1200" height="630">'
+                if img and os.path.exists(img) else "")
+    desc = html.escape(bot.get("description") or "")
+    return (f'<div class="bot"><div class="lh"><span class="dot"></span> Latest Grok Bot</div>'
+            f'<a class="botcard" href="{url}">{img_html}<span class="bb"><span class="bn">{html.escape(bot["name"])}</span>'
+            + (f'<span class="bd">{desc}</span>' if desc else "")
+            + '<span class="try">Try it <span aria-hidden="true">&rarr;</span></span></span></a></div>')
+
+_BOT = None
+
+def _bot():
+    global _BOT
+    if _BOT is None:
+        _BOT = latest_bot() or {}
+    return _BOT
+
 def render(tpl, data):
     ts = data.get("created_timestamp") or 0
     when = ago(ts) if ts else ""
@@ -135,7 +194,8 @@ def render(tpl, data):
               .replace("{{URL}}", html.escape(data["url"]))
               .replace("{{WHEN}}", when)
               .replace("{{META}}", html.escape(data.get("meta") or "View on X"))
-              .replace("{{MEME}}", meme_html(data.get("meme"))))
+              .replace("{{MEME}}", meme_html(data.get("meme")))
+              .replace("{{LATEST_BOT}}", bot_html(_bot())))
     write_index(out)
 
 def publish_fallback(tpl, reason):

@@ -54,6 +54,7 @@ jobs:
           test -s index.html
           mkdir -p site
           cp index.html avatar.jpg site/
+          cp bot.png site/ 2>/dev/null || true
           cp meme.jpg site/ 2>/dev/null || true
           cp meme.mp4 site/ 2>/dev/null || true
       - name: Pack last good page
