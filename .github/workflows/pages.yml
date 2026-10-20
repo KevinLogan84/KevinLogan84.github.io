@@ -12,13 +12,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is moving to Ubuntu 26.04 through 2026-11-19, so pin the
+    # image. python3, git, and tar are installed on ubuntu-26.04.
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Restore last good page
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .linkpage-cache
           key: linkpage-${{ github.run_id }}-${{ github.run_attempt }}
@@ -69,11 +71,16 @@ jobs:
       - name: Save last good page
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .linkpage-cache
           key: linkpage-${{ github.run_id }}-${{ github.run_attempt }}
-      - uses: actions/upload-artifact@v4
+      # Upload here, not in deploy, so "Re-run failed jobs" reuses this artifact.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - uses: actions/upload-artifact@v7
         with:
           name: site
           path: site
@@ -81,34 +88,37 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    # Publishing stays on main. The github-pages environment already allows only main.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: site
-          path: site
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/configure-pages@v6
+      - name: Deploy to GitHub Pages
+        id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Retry deploy to GitHub Pages
+        id: deployment_retry
+        if: (failure() || steps.deployment.outcome == 'failure') && steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+      - name: Fail when Pages deploy did not succeed
+        if: always() && !cancelled() && steps.deployment.outcome != 'success' && steps.deployment_retry.outcome != 'success'
+        run: exit 1
 
   # GitHub disables scheduled workflows after 60 days without repository activity.
   keepalive:
     if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Keep the schedule alive
         run: |
           set -euo pipefail
