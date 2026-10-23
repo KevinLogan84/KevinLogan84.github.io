@@ -6,7 +6,8 @@ on:
   push:
     branches: [main]
   pull_request:
-# Permissions are set per job. A workflow-level read cap would block the keepalive write.
+# Permissions are set per job. A workflow-level read cap would block the
+# keepalive and meme-snapshot commits.
 concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
@@ -19,6 +20,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+      - name: Meme snapshot keep and replace
+        run: python3 test_meme.py
       - name: Restore last good page
         uses: actions/cache/restore@v6
         with:
@@ -32,6 +35,13 @@ jobs:
             cp -f .linkpage-cache/index.html index.html
             mkdir -p snapshot
             cp -f .linkpage-cache/snapshot/post.json snapshot/post.json
+          fi
+          # snapshot/meme.json in git is the source of truth. Cache media must
+          # not replace a committed meme with an older image. Fill from cache
+          # only when this checkout has no meme snapshot yet.
+          if [ ! -f snapshot/meme.json ] && [ -f .linkpage-cache/snapshot/meme.json ]; then
+            mkdir -p snapshot
+            cp -f .linkpage-cache/snapshot/meme.json snapshot/meme.json
             cp -f .linkpage-cache/meme.jpg . 2>/dev/null || true
             cp -f .linkpage-cache/meme.mp4 . 2>/dev/null || true
           fi
@@ -41,16 +51,25 @@ jobs:
       - name: Failed fetch still builds
         run: |
           python3 - <<'PY'
+          import json
           import build
+          before = json.load(open("snapshot/meme.json", encoding="utf-8"))
           def boom():
               raise OSError("simulated fetch failure")
           build.fetch = boom
           code = build.main()
           html = open("index.html", encoding="utf-8").read()
+          after = json.load(open("snapshot/meme.json", encoding="utf-8"))
           if code != 0 or not html.strip() or "{{" in html:
               raise SystemExit(f"failed fetch did not leave a page (exit {code})")
-          print("failed fetch still built index.html")
+          if "LATEST PHOTO / MEME" not in html or before.get("page_url") not in html:
+              raise SystemExit("failed fetch dropped the saved meme")
+          if after.get("id") != before.get("id"):
+              raise SystemExit(f"failed fetch changed meme {before.get('id')} -> {after.get('id')}")
+          print("failed fetch still built index.html with saved meme", after.get("id"))
           PY
+      - name: Meme snapshot still present
+        run: test -s snapshot/meme.json
       - name: Assemble site
         run: |
           test -s index.html
@@ -66,6 +85,7 @@ jobs:
           mkdir -p .linkpage-cache/snapshot
           cp -f index.html .linkpage-cache/index.html
           cp -f snapshot/post.json .linkpage-cache/snapshot/post.json
+          cp -f snapshot/meme.json .linkpage-cache/snapshot/meme.json
           cp -f meme.jpg .linkpage-cache/ 2>/dev/null || true
           cp -f meme.mp4 .linkpage-cache/ 2>/dev/null || true
       - name: Save last good page
@@ -85,6 +105,24 @@ jobs:
           name: site
           path: site
           retention-days: 1
+      # Not gitignored: upload-artifact skips gitignored paths. The commit job
+      # downloads this and commits it only when the meme changed.
+      - name: Pack meme snapshot
+        run: |
+          set -euo pipefail
+          rm -rf meme-state
+          mkdir -p meme-state
+          test -s snapshot/meme.json
+          cp -f snapshot/meme.json meme-state/meme.json
+          if [ -f meme.jpg ]; then cp -f meme.jpg meme-state/meme.jpg; fi
+          if [ -f meme.mp4 ]; then cp -f meme.mp4 meme-state/meme.mp4; fi
+      - name: Upload meme snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: meme-state
+          path: meme-state
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
@@ -110,6 +148,61 @@ jobs:
       - name: Fail when Pages deploy did not succeed
         if: always() && !cancelled() && steps.deployment.outcome != 'success' && steps.deployment_retry.outcome != 'success'
         run: exit 1
+
+  # Proves the build job's meme snapshot can be downloaded by a later job.
+  # Pull requests only; it does not push. contents: read matches the build job.
+  meme-artifact:
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download meme snapshot
+        uses: actions/download-artifact@v7
+        with:
+          name: meme-state
+          path: meme-state-download
+      - name: Artifact keeps a renderable meme
+        run: python3 persist_meme.py meme-state-download --check
+
+  # Commit snapshot/meme.json and its media back to main. Build stays
+  # contents: read. This job has contents: write, same scope as keepalive.
+  # Deploy does not wait on it. An unchanged meme is not committed, so a run
+  # that finds nothing new still leaves the previous snapshot in git.
+  persist-meme:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Download meme snapshot
+        uses: actions/download-artifact@v7
+        with:
+          name: meme-state
+          path: meme-state-download
+      - name: Commit meme snapshot when it changes
+        run: |
+          set -euo pipefail
+          python3 persist_meme.py meme-state-download
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- snapshot/meme.json
+          if [ -f meme.jpg ]; then git add -- meme.jpg; fi
+          if [ -f meme.mp4 ]; then git add -- meme.mp4; else git rm -f --ignore-unmatch -- meme.mp4; fi
+          if git diff --cached --quiet; then
+            echo "Saved meme unchanged. Snapshot stays in git for the next run."
+            exit 0
+          fi
+          id=$(python3 -c 'import json; print(json.load(open("snapshot/meme.json", encoding="utf-8")).get("id",""))')
+          git commit -m "Save meme snapshot ${id} [skip ci]"
+          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }
 
   # GitHub disables scheduled workflows after 60 days without repository activity.
   keepalive:

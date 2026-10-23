@@ -3,6 +3,10 @@
 
 No API key needed. A failed X fetch must not fail the deploy: rebuild from
 snapshot/post.json (the last good post) or keep the committed index.html.
+
+snapshot/meme.json is the last meme that qualified (original post, one photo
+or GIF, caption of 140 characters or less). The section keeps rendering that
+meme. A newer qualifying post replaces it; a quiet fetch does not clear it.
 """
 import html, json, os, re, sys, urllib.request
 from datetime import datetime, timezone
@@ -10,6 +14,7 @@ from datetime import datetime, timezone
 URL = "https://api.fxtwitter.com/2/profile/Kevin_Logan/statuses?count=100"
 ME = "kevin_logan"
 SNAPSHOT = "snapshot/post.json"
+MEME_SNAPSHOT = "snapshot/meme.json"
 COUNT_FALLBACK = ("4,100+", "870+", "1,300+")
 
 def fetch():
@@ -36,21 +41,78 @@ def is_reply(p):
 def media_items(p):
     return ((p.get("media") or {}).get("all")) or []
 
+def status_id(value):
+    """Numeric status id from a post, a meme snapshot, or a status URL."""
+    if isinstance(value, dict):
+        raw = value.get("id")
+        if raw is None or raw == "":
+            raw = value.get("page_url") or value.get("url") or ""
+        value = raw
+    match = re.search(r"(\d+)$", str(value or "").strip())
+    if not match:
+        return 0
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return 0
+
+def created_ts(value):
+    if not isinstance(value, dict):
+        return 0
+    try:
+        return int(value.get("created_timestamp") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def is_newer_meme(candidate, saved):
+    """True when candidate should replace saved.
+
+    Newer means a higher status id. A later date is used only when neither
+    side has an id. The same id is not newer.
+    """
+    if not candidate:
+        return False
+    if not saved:
+        return True
+    cid, sid = status_id(candidate), status_id(saved)
+    if cid and sid:
+        return cid > sid
+    if cid and not sid:
+        return True
+    if sid and not cid:
+        return False
+    return created_ts(candidate) > created_ts(saved)
+
 def latest_post(posts):
     for p in posts:
         if mine(p) and not is_reply(p) and (p.get("text") or "").strip():
             return p
 
+def qualifying_media(p):
+    """Original post, a single photo or one GIF, caption of 140 characters or less."""
+    if not mine(p) or is_reply(p):
+        return None
+    items = media_items(p)
+    if len([x for x in items if x.get("type") == "photo"]) > 1:
+        return None
+    media = [x for x in items if x.get("type") in ("gif", "photo")]
+    if media and len((p.get("text") or "")) <= 140:
+        return media[0]
+    return None
+
 def latest_meme(posts, skip_id):
-    # a meme = Kevin's own recent post with a GIF or photo, short caption, not a reply to someone
+    # Newest qualifying post, skipping the one already shown as the latest post.
+    skip = status_id(skip_id)
+    best_p, best_m, best_id = None, None, -1
     for p in posts:
-        if not mine(p) or p.get("id") == skip_id:
+        pid = status_id(p)
+        if skip and pid == skip:
             continue
-        m = [x for x in media_items(p) if x.get("type") in ("gif", "photo")]
-        if len([x for x in media_items(p) if x.get("type") == "photo"]) > 1:
-            continue
-        if m and len((p.get("text") or "")) <= 140 and not is_reply(p):
-            return p, m[0]
+        media = qualifying_media(p)
+        if media and pid > best_id:
+            best_p, best_m, best_id = p, media, pid
+    if best_p:
+        return best_p, best_m
     return None, None
 
 def ago(ts):
@@ -60,10 +122,19 @@ def ago(ts):
     return f"{s // 86400}d ago"
 
 def save(url, name):
+    # Write beside the destination and replace only after a full download, so a
+    # failed newer meme cannot wipe the saved meme.jpg / meme.mp4.
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "kevin-linkpage/1.0"})
         with urllib.request.urlopen(req, timeout=60) as r:
-            open(name, "wb").write(r.read())
+            data = r.read()
+        if not data:
+            print("save empty:", url)
+            return None
+        tmp = name + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, name)
         return name
     except Exception as e:
         print("save failed:", url, e)
@@ -98,6 +169,126 @@ def save_snapshot(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write("\n")
     os.replace(tmp, SNAPSHOT)
+
+def load_meme():
+    try:
+        with open(MEME_SNAPSHOT, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("no meme snapshot:", e)
+        return None
+    if not isinstance(data, dict) or not data.get("page_url"):
+        print("meme snapshot missing page_url")
+        return None
+    if data.get("type") not in ("photo", "gif"):
+        print("meme snapshot has no photo or gif")
+        return None
+    return data
+
+def save_meme(meme):
+    os.makedirs(os.path.dirname(MEME_SNAPSHOT) or ".", exist_ok=True)
+    tmp = MEME_SNAPSHOT + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(meme, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, MEME_SNAPSHOT)
+
+def renderable(meme):
+    if not isinstance(meme, dict):
+        return False
+    if meme.get("type") == "gif" and meme.get("video") and os.path.exists(meme["video"]):
+        return True
+    if meme.get("type") == "photo" and meme.get("image") and os.path.exists(meme["image"]):
+        return True
+    return bool(meme.get("remote_html"))
+
+def persisted_meme(meme):
+    """Local files worth committing. A remote-only tag is for this deploy."""
+    if not isinstance(meme, dict):
+        return None
+    kind = meme.get("type")
+    base = {
+        "id": str(meme.get("id") or status_id(meme) or ""),
+        "page_url": meme.get("page_url") or "",
+        "caption": meme.get("caption") or "",
+        "created_timestamp": created_ts(meme),
+    }
+    if not base["page_url"]:
+        return None
+    if kind == "gif" and meme.get("video") and os.path.exists(meme["video"]):
+        stored = dict(base, type="gif", video=meme["video"])
+        if meme.get("poster") and os.path.exists(meme["poster"]):
+            stored["poster"] = meme["poster"]
+        return stored
+    if kind == "photo" and meme.get("image") and os.path.exists(meme["image"]):
+        return dict(base, type="photo", image=meme["image"])
+    return None
+
+def active_meme(passed):
+    """Committed snapshot/meme.json wins when it can still be rendered.
+
+    main() writes that file before render when a newer meme is accepted.
+    """
+    saved = load_meme()
+    if renderable(saved):
+        return saved
+    if renderable(passed):
+        return passed
+    return None
+
+def download_meme(mp, mm):
+    page_url = mp["url"]
+    cap = (mp.get("text") or "").strip()
+    meme = {
+        "id": str(mp.get("id") or status_id(page_url) or ""),
+        "page_url": page_url,
+        "type": mm["type"],
+        "caption": cap,
+        "created_timestamp": created_ts(mp),
+    }
+    if mm["type"] == "gif":
+        video = save(mm["url"], "meme.mp4")
+        if not video:
+            meme["remote_html"] = f'<video src="{html.escape(mm["url"])}" loop muted playsinline preload="metadata"></video>'
+            return meme
+        meme["video"] = video
+        if mm.get("thumbnail_url"):
+            poster = save(mm["thumbnail_url"], "meme.jpg")
+            if poster:
+                meme["poster"] = poster
+        return meme
+    image = save(mm["url"], "meme.jpg")
+    meme["image"] = image or ""
+    if image:
+        if os.path.exists("meme.mp4"):
+            os.remove("meme.mp4")
+        return meme
+    meme["remote_html"] = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
+    return meme
+
+def resolve_meme(posts, skip_id):
+    """Keep snapshot/meme.json unless a newer qualifying post downloaded."""
+    saved = load_meme()
+    mp, mm = latest_meme(posts, skip_id)
+    saved_url = (saved or {}).get("page_url")
+    if not mp or not mm:
+        print("no qualifying meme; keeping", saved_url)
+        return saved
+    candidate = {
+        "id": mp.get("id"),
+        "page_url": mp.get("url"),
+        "created_timestamp": mp.get("created_timestamp") or 0,
+    }
+    if not is_newer_meme(candidate, saved):
+        print("qualifying meme is not newer; keeping", saved_url)
+        return saved
+    stored = persisted_meme(download_meme(mp, mm))
+    if not stored:
+        print("newer meme did not save; keeping", saved_url)
+        return saved
+    save_meme(stored)
+    print("replaced meme with", stored.get("page_url"))
+    return stored
 
 def write_index(text):
     tmp = "index.html.tmp"
@@ -184,6 +375,8 @@ def _bot():
     return _BOT
 
 def render(tpl, data):
+    data = dict(data)
+    data["meme"] = active_meme(data.get("meme"))
     ts = data.get("created_timestamp") or 0
     when = ago(ts) if ts else ""
     posts, followers, following = (data.get("posts"), data.get("followers"), data.get("following"))
@@ -203,7 +396,8 @@ def publish_fallback(tpl, reason):
     snap = load_snapshot()
     if snap:
         render(tpl, snap)
-        print("rebuilt index.html from last good post:", snap.get("url"))
+        meme = load_meme()
+        print("rebuilt index.html from last good post:", snap.get("url"), "| meme:", (meme or {}).get("page_url"))
         return 0
     if os.path.isfile("index.html") and os.path.getsize("index.html") > 0:
         print("keeping existing index.html")
@@ -232,36 +426,10 @@ def main():
         return publish_fallback(tpl, "no suitable post, keeping last good post")
     ts = p.get("created_timestamp") or 0
     meta = f"{p.get('likes', 0)} likes · {p.get('replies', 0)} replies · View on X"
-    meme = None
-    mp, mm = latest_meme(posts, p.get("id"))
-    if mp and mm:
-        page_url = mp["url"]
-        cap = (mp.get("text") or "").strip()
-        if mm["type"] == "gif":
-            video = save(mm["url"], "meme.mp4")
-            poster = save(mm.get("thumbnail_url", ""), "meme.jpg") if mm.get("thumbnail_url") else None
-            meme = {
-                "page_url": page_url,
-                "type": "gif",
-                "caption": cap,
-                "video": video or "",
-                "poster": poster or "",
-            }
-            if not video:
-                meme["remote_html"] = f'<video src="{html.escape(mm["url"])}" loop muted playsinline preload="metadata"></video>'
-        else:
-            image = save(mm["url"], "meme.jpg")
-            meme = {
-                "page_url": page_url,
-                "type": "photo",
-                "caption": cap,
-                "image": image or "",
-            }
-            if not image:
-                meme["remote_html"] = f'<img src="{html.escape(mm["url"])}" alt="Latest meme" loading="lazy">'
+    meme = resolve_meme(posts, p.get("id"))
     posts_n, fol_n, fing_n = counts()
     data = {
-        "id": p.get("id"),
+        "id": str(p.get("id") or ""),
         "text": p["text"],
         "url": p["url"],
         "created_timestamp": ts,
@@ -269,17 +437,11 @@ def main():
         "posts": posts_n,
         "followers": fol_n,
         "following": fing_n,
-        "meme": meme,
+        "meme": persisted_meme(meme) if meme else None,
     }
-    # remote_html is only for this deploy; the persisted snapshot points at local files.
-    persisted = dict(data)
-    if meme and meme.get("remote_html") and not (meme.get("video") or meme.get("image")):
-        persisted["meme"] = None
-    elif meme:
-        persisted["meme"] = {k: v for k, v in meme.items() if k != "remote_html"}
-    save_snapshot(persisted)
+    save_snapshot(data)
     render(tpl, data)
-    print("post:", p["url"], "| meme:", mp["url"] if mp else None)
+    print("post:", p["url"], "| meme:", (data.get("meme") or {}).get("page_url"))
     return 0
 
 if __name__ == "__main__":
